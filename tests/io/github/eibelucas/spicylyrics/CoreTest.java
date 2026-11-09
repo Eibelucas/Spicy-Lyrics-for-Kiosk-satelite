@@ -103,6 +103,33 @@ public final class CoreTest {
         assert near(clock.position(20 * s), 61);
         clock.reset();
         assert !clock.known() && clock.position(30 * s) == 0;
+
+        // A stale zero-position timestamp must not count the time spent preparing the track.
+        clock.report(0, 60, true, true, 30 * s);
+        assert near(clock.position(30 * s), 0);
+        assert near(clock.position(31 * s), 1);
+        // Attaching to an already playing track still accounts for an in-flight position report.
+        clock.report(12, 0.5, true, true, 32 * s);
+        assert near(clock.position(32 * s), 12.5);
+        // Resuming after a long pause must not add that pause, even if later reports retain its old timestamp.
+        clock.set(42, false, 33 * s);
+        clock.report(42, 120, true, false, 153 * s);
+        assert near(clock.position(153 * s), 42);
+        clock.report(42, 122, true, false, 155 * s);
+        assert near(clock.position(155 * s), 44);
+        // The same rule holds when a player event confirms playback before the next queue report arrives.
+        clock.setPlaying(false, 156 * s);
+        clock.setPlaying(true, 200 * s);
+        clock.report(45, 60, true, false, 200 * s);
+        assert near(clock.position(200 * s), 45);
+
+        Model model = new Model();
+        model.offset = 3;
+        assert model.position(0) < 0;
+        model.clock.set(0, false, 0);
+        assert model.position(10 * s) < 0 : "The offset must not start the first words while buffering";
+        model.clock.setPlaying(true, 10 * s);
+        assert near(model.position(11 * s), 4);
     }
 
     static void times() {

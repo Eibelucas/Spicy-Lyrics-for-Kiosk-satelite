@@ -103,6 +103,7 @@ public final class PluginTest {
     public static void main(String[] args) {
         musicAssistant();
         homeAssistant();
+        remotePlaybackStart();
         noKey();
         System.out.println("PluginTest passed");
     }
@@ -177,7 +178,7 @@ public final class PluginTest {
         int seek = host.ma("player_queues/seek");
         assert "up_kitchen".equals(host.maArgs.get(seek).get("queue_id")) && Integer.valueOf(30).equals(host.maArgs.get(seek).get("position"));
         plugin.control("play");
-        assert host.commands.contains("sendspinControl") && model.clock.playing();
+        assert host.commands.contains("sendspinControl") && !model.clock.playing();
 
         // The next track has no lyrics: the overlay makes way for the built-in Now Playing.
         plugin.onEvent("ks.ma.subscription.queue", event("queue_updated", map("{\"queue_id\":\"up_kitchen\",\"state\":\"playing\",\"elapsed_time\":0,"
@@ -270,5 +271,60 @@ public final class PluginTest {
         // A key entered later looks the playing track up right away.
         plugin.configure(settings());
         assert "Couldn't match this track on Spicy Lyrics".equals(plugin.model().message) : plugin.model().message;
+    }
+
+    static void remotePlaybackStart() {
+        CoreTest.FakeApi api = new CoreTest.FakeApi();
+        api.replies.put(LyricsClient.BASE + "/v1/lyrics/4cOdK2wGLETKBW3PvgPWqT", new LyricsClient.Reply(200, CoreTest.SYLLABLE, 0));
+        SpicyLyricsPlugin plugin = new SpicyLyricsPlugin(new SpicyLyricsPlugin.Runner() {
+            @Override public void run(Runnable task) { task.run(); }
+            @Override public void shutdown() {}
+        }, new LyricsClient(api, System::currentTimeMillis));
+        Host host = new Host();
+        plugin.start(host, settings("maPlayer", "other_player", "offset", 3.0));
+        // The local kiosk is idle; it must not govern the followed remote player's clock.
+        host.reads.get("getSendspinPlayer").onResult(true, map("{\"maPlayerId\":\"kiosk\",\"playing\":false}"), null);
+        host.maCallbacks.get(host.ma("players/get")).onResult(true,
+            map("{\"player_id\":\"other_player\",\"playback_state\":\"buffering\",\"current_media\":{\"queue_id\":\"other_queue\"}}"), null);
+        double stale = System.currentTimeMillis() / 1000.0 - 60;
+        String track = ",\"current_item\":{\"media_item\":{\"media_type\":\"track\",\"name\":\"Never Gonna Give You Up\","
+            + "\"provider_mappings\":[{\"provider_domain\":\"spotify\",\"item_id\":\"4cOdK2wGLETKBW3PvgPWqT\"}]}}}";
+        Map<String, Object> starting = map("{\"queue_id\":\"other_queue\",\"state\":\"playing\",\"elapsed_time\":0,\"elapsed_time_last_updated\":" + stale + track);
+        host.maCallbacks.get(host.ma("player_queues/get")).onResult(true, starting, null);
+        Model model = plugin.model();
+        assert model.lyrics != null && model.clock.known() && !model.clock.playing();
+        assert model.position(System.nanoTime() + 10_000_000_000L) < 0;
+
+        // Neither the optimistic queue time nor pressing Play starts lyrics during buffering.
+        plugin.onEvent("ks.ma.subscription.queue", event("queue_time_updated", 2.0));
+        starting.put("elapsed_time", 2.0);
+        plugin.onEvent("ks.ma.subscription.queue", event("queue_updated", starting));
+        plugin.control("play");
+        assert !model.clock.playing() && model.clock.position(System.nanoTime()) == 0;
+        host.reads.get("sendspinControl").onResult(false, null, "Still buffering");
+        assert !model.clock.playing();
+
+        // Only the followed player's confirmation starts the clock, from zero.
+        Map<String, Object> playing = map("{\"player_id\":\"other_player\",\"playback_state\":\"playing\",\"current_media\":{\"queue_id\":\"other_queue\"}}");
+        plugin.onEvent("ks.ma.subscription.player", event("player_updated", playing));
+        assert model.clock.playing() && model.clock.position(System.nanoTime()) < 0.5;
+
+        // Pause at 42 seconds, then resume with an old timestamp: no artificial ten-second jump.
+        starting.put("state", "paused");
+        starting.put("elapsed_time", 42.0);
+        plugin.onEvent("ks.ma.subscription.queue", event("queue_updated", starting));
+        Map<String, Object> paused = new HashMap<>(playing);
+        paused.put("playback_state", "paused");
+        plugin.onEvent("ks.ma.subscription.player", event("player_updated", paused));
+        plugin.control("play");
+        assert !model.clock.playing();
+        starting.put("state", "playing");
+        plugin.onEvent("ks.ma.subscription.queue", event("queue_updated", starting));
+        assert !model.clock.playing();
+        plugin.onEvent("ks.ma.subscription.player", event("player_updated", playing));
+        plugin.onEvent("ks.ma.subscription.queue", event("queue_updated", starting));
+        double position = model.clock.position(System.nanoTime());
+        assert model.clock.playing() && position >= 42 && position < 42.5 : position;
+        plugin.stop();
     }
 }
