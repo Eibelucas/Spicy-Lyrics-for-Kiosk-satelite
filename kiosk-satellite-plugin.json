@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "spicy-lyrics-overlay",
+  "name": "Spicy Lyrics Overlay",
+  "version": "1.0.0",
+  "minAndroidSdk": 24,
+  "minAppVersion": "2026.11.10",
+  "entryClass": "io.github.eibelucas.spicylyrics.SpicyLyricsPlugin",
+  "description": "Word-by-word synced lyrics from the Spicy Lyrics Developer API over Now Playing, in place of the built-in lyrics. Follows the kiosk's Music Assistant player or any Home Assistant media player and needs your own Spicy Lyrics API key. Unofficial, not affiliated with Spicy Lyrics, Spotify or Kiosk Satellite.",
+  "author": "Eibelucas",
+  "license": "Apache-2.0",
+  "capabilities": ["overlay", "host.read", "host.control", "ma"],
+  "settings": [
+    {
+      "key": "apiKey",
+      "type": "secret",
+      "title": "API key",
+      "default": "",
+      "group": "Spicy Lyrics API",
+      "description": "Your own key from developers.spicylyrics.org: a publishable key (sl_pk_) with \"no origin header\" allowed is best. Only this kiosk sends it, to api.spicylyrics.org."
+    },
+    {
+      "key": "allowLikely",
+      "type": "boolean",
+      "title": "Accept likely matches",
+      "default": true,
+      "group": "Spicy Lyrics API",
+      "description": "For tracks without a Spotify ID, also use a search result Spicy Lyrics rates as likely, when its length fits. Off takes exact matches only."
+    },
+    {
+      "key": "source",
+      "type": "select",
+      "title": "Follow",
+      "default": "Music Assistant",
+      "options": ["Music Assistant", "Home Assistant media player"],
+      "group": "Player",
+      "description": "Where the playing track and its position come from. Music Assistant uses the connection set up under Settings > Media Player."
+    },
+    {
+      "key": "maPlayer",
+      "type": "string",
+      "title": "Music Assistant player",
+      "default": "",
+      "choices": "plugin",
+      "emptyText": "Empty follows this kiosk's own player. Refresh to list every Music Assistant player.",
+      "group": "Player",
+      "visibleWhen": { "key": "source", "equals": "Music Assistant" },
+      "description": "The player whose track to show. Leave it on this kiosk's own player unless the kiosk follows another one."
+    },
+    {
+      "key": "mediaPlayer",
+      "type": "entity",
+      "title": "Media player",
+      "default": "",
+      "group": "Player",
+      "visibleWhen": { "key": "source", "equals": "Home Assistant media player" },
+      "description": "A media_player entity, such as the Spotify integration's. Spotify players give an exact match. Others are matched by title, artist and length."
+    },
+    {
+      "key": "offset",
+      "type": "number",
+      "title": "Lyrics timing",
+      "default": 0.3,
+      "min": -3,
+      "max": 3,
+      "step": 0.1,
+      "unit": "s",
+      "group": "Player",
+      "description": "Positive shows the words earlier, negative later."
+    },
+    {
+      "key": "showWith",
+      "type": "select",
+      "title": "Show the lyrics",
+      "default": "With Now Playing",
+      "options": ["With Now Playing", "Only by action"],
+      "group": "Display",
+      "description": "With Now Playing opens them over Now Playing whenever a track has lyrics. Either way the Show, Hide and Toggle actions work from gestures, the drawer and Home Assistant."
+    },
+    {
+      "key": "layout",
+      "type": "select",
+      "title": "Layout",
+      "default": "Full screen",
+      "options": ["Full screen", "Right half"],
+      "group": "Display",
+      "description": "Right half leaves the cover and Now Playing's own controls in sight on a landscape screen."
+    },
+    {
+      "key": "textSize",
+      "type": "number",
+      "title": "Text size",
+      "default": 100,
+      "min": 60,
+      "max": 160,
+      "step": 10,
+      "unit": "%",
+      "group": "Display"
+    },
+    {
+      "key": "animations",
+      "type": "select",
+      "title": "Animations",
+      "default": "Full",
+      "options": ["Full", "Reduced"],
+      "group": "Display",
+      "description": "Reduced drops the glow, the lift of the words and the moving background and draws fewer frames, for slow panels such as an Echo Show 5."
+    },
+    {
+      "key": "showControls",
+      "type": "boolean",
+      "title": "Playback buttons",
+      "default": true,
+      "group": "Display",
+      "description": "Previous, play or pause and next under the lyrics."
+    },
+    {
+      "key": "tapToSeek",
+      "type": "boolean",
+      "title": "Tap a line to jump there",
+      "default": true,
+      "group": "Display",
+      "description": "Music Assistant queues only."
+    }
+  ],
+  "buttons": [
+    {
+      "id": "testKey",
+      "title": "Test the key",
+      "label": "Test",
+      "group": "Spicy Lyrics API",
+      "description": "Asks Spicy Lyrics for one track's lyrics with your key."
+    }
+  ],
+  "commands": [
+    { "id": "toggle", "title": "Show or hide lyrics" },
+    { "id": "show", "title": "Show lyrics" },
+    { "id": "hide", "title": "Hide lyrics" }
+  ]
+}

@@ -1,0 +1,7 @@
+dist/
+__pycache__/
+*.pyc
+*.class
+.idea/
+.vscode/
+local.properties
