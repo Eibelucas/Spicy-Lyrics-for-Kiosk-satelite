@@ -13,15 +13,28 @@ final class PlaybackClock {
 
     private double anchor;
     private long anchorNanos;
+    private long startedNanos;
     private boolean playing;
     private boolean known;
 
     /** Take a report as the exact position, for a new track, a seek or a change between playing and paused. */
     synchronized void set(double position, boolean playing, long nowNanos) {
+        if (playing && (!known || !this.playing)) startedNanos = nowNanos;
         anchor = Math.max(0, position);
         anchorNanos = nowNanos;
         this.playing = playing;
         known = true;
+    }
+
+    /** A timestamp's age may include buffering or a pause. Only extrapolate time spent playing. */
+    synchronized void report(double position, double age, boolean playing, boolean exact, long nowNanos) {
+        if (playing && position > 0 && !Double.isNaN(age)) {
+            double runningFor = this.playing && known ? Math.max(0, nowNanos - startedNanos) / 1e9 : 0;
+            double elapsed = exact ? age : Math.min(age, runningFor);
+            position += Math.max(0, Math.min(10, elapsed));
+        }
+        if (exact) set(position, playing, nowNanos);
+        else sync(position, playing, nowNanos);
     }
 
     /**
@@ -43,6 +56,7 @@ final class PlaybackClock {
         if (!known || playing == this.playing) return;
         anchor = positionAt(nowNanos);
         anchorNanos = nowNanos;
+        if (playing) startedNanos = nowNanos;
         this.playing = playing;
     }
 

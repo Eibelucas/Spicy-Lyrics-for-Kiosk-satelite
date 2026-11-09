@@ -5,6 +5,7 @@ Word-by-word synced lyrics from the [Spicy Lyrics Developer API](https://develop
 - **Syllable sync**: each word fills as it is sung and lifts a little, with a soft glow on long notes. Line-synced and plain lyrics work too.
 - **Spicy Lyrics layout**: the current line centered, other lines receding, background vocals smaller under their line, duet lines on the opposite side, dots through instrumental breaks.
 - **Follows your player**: the kiosk's own Music Assistant player (Sendspin), any other Music Assistant player, or any Home Assistant `media_player`, such as the Spotify integration's.
+- **Waits for playback**: pressing Play or preparing a queue does not start the lyrics clock. Music Assistant's player must confirm playback, and buffering or paused time is not added when playback resumes.
 - **Tap a line to jump there** (Music Assistant queues), drag to look ahead, playback buttons, a close button.
 - **Shows itself with Now Playing**, or only when you run its actions from a gesture, the drawer or Home Assistant.
 - Full screen or the right half of the screen, adjustable text size and timing, and a reduced mode for slow panels like the Echo Show 5.

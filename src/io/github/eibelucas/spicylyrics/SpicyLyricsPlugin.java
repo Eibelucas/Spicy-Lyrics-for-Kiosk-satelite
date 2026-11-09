@@ -63,6 +63,8 @@ public final class SpicyLyricsPlugin implements KioskPlugin {
     private Map<String, Object> lastIdentity;
     private String playerId = "";
     private String queueId = "";
+    private boolean reportedPlaying;
+    private Boolean playerPlaying;
     private String haEntity = "";
     private boolean navigationEvents;
 
@@ -224,6 +226,11 @@ public final class SpicyLyricsPlugin implements KioskPlugin {
         if (!source.equals(SOURCE_MA) || !chosenPlayer.isEmpty()) return;
         String next = Json.string(player.get("maPlayerId"));
         follow(next);
+        // A queue can already say "playing" while this kiosk is still buffering.
+        // The host's playback event is the authority for when its audio actually starts.
+        if (player.get("playing") instanceof Boolean) {
+            model.clock.setPlaying(playbackRunning(reportedPlaying), System.nanoTime());
+        }
         if (!next.isEmpty()) return;
         if (!Boolean.TRUE.equals(player.get("maConfigured"))) status("Set up Music Assistant under Settings > Media Player, or follow a Home Assistant media player instead.", true);
         else status("Waiting for Music Assistant to list this kiosk's player.", false);
@@ -235,6 +242,8 @@ public final class SpicyLyricsPlugin implements KioskPlugin {
         if (!playerId.isEmpty()) maUnsubscribe(SUB_PLAYER);
         followQueue("");
         playerId = next;
+        reportedPlaying = false;
+        playerPlaying = null;
         if (playerId.isEmpty()) {
             trackChanged(null);
             return;
@@ -263,11 +272,12 @@ public final class SpicyLyricsPlugin implements KioskPlugin {
         String id = Json.string(player.get("player_id"));
         if (!id.isEmpty() && !id.equals(playerId)) return;
         boolean playing = playing(player.get("playback_state") != null ? player.get("playback_state") : player.get("state"));
+        playerPlaying = playing;
         Map<?, ?> media = Json.map(player.get("current_media"));
         String queue = Json.string(media.get("queue_id"));
         if (!queue.isEmpty()) {
             followQueue(queue);
-            model.clock.setPlaying(playing, System.nanoTime());
+            model.clock.setPlaying(playbackRunning(reportedPlaying), System.nanoTime());
             return;
         }
         // Not from a queue, such as an AirPlay or Spotify Connect stream into the player: the player knows the track.
@@ -316,7 +326,9 @@ public final class SpicyLyricsPlugin implements KioskPlugin {
             if (!queue) playerData(Json.map(payload.get("data")));
             else if ("queue_time_updated".equals(payload.get("event"))) {
                 double seconds = Json.number(payload.get("data"));
-                if (!Double.isNaN(seconds) && model.clock.known()) model.clock.sync(seconds, model.clock.playing(), System.nanoTime());
+                if (!Double.isNaN(seconds) && model.clock.known() && (!reportedPlaying || playbackRunning(true))) {
+                    model.clock.sync(seconds, model.clock.playing(), System.nanoTime());
+                }
             } else {
                 queueData(Json.map(payload.get("data")));
             }
@@ -478,18 +490,27 @@ public final class SpicyLyricsPlugin implements KioskPlugin {
     /** Move the clock to what a player reported: a position at a time, in seconds since 1970. */
     private void position(Object elapsed, Object updatedAt, boolean playing, boolean exact) {
         long now = System.nanoTime();
+        reportedPlaying = playing;
+        if (playing && !playbackRunning(true) && !exact) {
+            model.clock.setPlaying(false, now);
+            return;
+        }
+        playing = playbackRunning(playing);
         double seconds = Json.number(elapsed);
         if (Double.isNaN(seconds)) {
             model.clock.setPlaying(playing, now);
             return;
         }
         double updated = Json.number(updatedAt);
-        if (playing && !Double.isNaN(updated)) {
-            // The report is from a moment ago. Clocks of two machines disagree a little, so trust at most ten seconds.
-            seconds += Math.max(0, Math.min(10, System.currentTimeMillis() / 1000.0 - updated));
-        }
-        if (exact) model.clock.set(seconds, playing, now);
-        else model.clock.sync(seconds, playing, now);
+        model.clock.report(seconds, System.currentTimeMillis() / 1000.0 - updated, playing, exact, now);
+    }
+
+    /** A queue may start preparing a track before its player starts playing it. */
+    private boolean playbackRunning(boolean reported) {
+        if (!reported || !source.equals(SOURCE_MA)) return reported;
+        if (Boolean.FALSE.equals(playerPlaying)) return false;
+        if (!chosenPlayer.isEmpty() || lastIdentity == null || !(lastIdentity.get("playing") instanceof Boolean)) return true;
+        return Boolean.TRUE.equals(lastIdentity.get("playing"));
     }
 
     // ---------------------------------------------------------------- the overlay
@@ -620,7 +641,6 @@ public final class SpicyLyricsPlugin implements KioskPlugin {
 
     synchronized void control(String command) {
         if (host == null) return;
-        if (command.equals("play") || command.equals("pause")) model.clock.setPlaying(command.equals("play"), System.nanoTime());
         host.executeCommand("sendspinControl", Collections.<String, Object>singletonMap("command", command), new PluginHost.CommandCallback() {
             @Override public void onResult(boolean ok, Object data, String error) {
                 if (!ok) status("The player did not take " + command + ": " + error, true);

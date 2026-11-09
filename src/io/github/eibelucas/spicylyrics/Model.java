@@ -21,7 +21,12 @@ final class Model {
     /** Raised whenever something the layout depends on changes. */
     volatile int version;
 
-    double position(long nowNanos) { return clock.position(nowNanos) + offset; }
+    double position(long nowNanos) {
+        double position = clock.position(nowNanos);
+        // No positive timing offset may light the first words before playback has started.
+        if (!clock.known() || (position == 0 && !clock.playing())) return -1;
+        return position + offset;
+    }
 
     void changed() { version++; }
 }
